@@ -203,7 +203,11 @@ int lgw_spi_r(void *spi_target, uint8_t address, uint8_t *data) {
 	int spi_device;
 	uint8_t out_buf[2];
 	uint8_t in_buf[ARRAY_SIZE(out_buf)];
+#if CFG_SPI_HALF_DUPLEX == 1
+	struct spi_ioc_transfer k[2];
+#else
 	struct spi_ioc_transfer k;
+#endif
 	int a;
 
 	/* check input variables */
@@ -221,19 +225,32 @@ int lgw_spi_r(void *spi_target, uint8_t address, uint8_t *data) {
 
 	/* I/O transaction */
 	memset(&k, 0, sizeof(k)); /* clear k */
+#if CFG_SPI_HALF_DUPLEX == 1
+	k[0].tx_buf = (unsigned long) out_buf;
+	k[1].rx_buf = (unsigned long) in_buf;
+	k[0].len = ARRAY_SIZE(out_buf) / 2;
+	k[1].len = ARRAY_SIZE(out_buf) / 2;
+	k[0].cs_change = 0;
+	k[1].cs_change = SPI_CS_CHANGE;
+	a = ioctl(spi_device, SPI_IOC_MESSAGE(2), &k);
+#else
 	k.tx_buf = (unsigned long) out_buf;
 	k.rx_buf = (unsigned long) in_buf;
 	k.len = ARRAY_SIZE(out_buf);
 	k.cs_change = SPI_CS_CHANGE;
 	a = ioctl(spi_device, SPI_IOC_MESSAGE(1), &k);
-
+#endif
 	/* determine return code */
 	if (a != 2) {
 		DEBUG_MSG("ERROR: SPI READ FAILURE\n");
 		return LGW_SPI_ERROR;
 	} else {
 		DEBUG_MSG("Note: SPI read success\n");
+#if CFG_SPI_HALF_DUPLEX == 1
+		*data = in_buf[0];
+#else
 		*data = in_buf[1];
+#endif
 		return LGW_SPI_SUCCESS;
 	}
 }
